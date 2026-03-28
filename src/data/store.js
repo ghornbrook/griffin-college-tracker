@@ -1,10 +1,11 @@
-// Local storage-based data store (Phase 1)
-// Will migrate to Supabase in Phase 2
+// Data store: localStorage for instant reads, Supabase for cross-device sync
+import { supabase } from './supabase'
 
 const STORAGE_KEYS = {
   visits: 'gct_visits',
   essayNotes: 'gct_essay_notes',
   customSchools: 'gct_custom_schools',
+  lastSync: 'gct_last_sync',
 };
 
 // ============================================================
@@ -29,6 +30,8 @@ export function saveVisit(schoolId, visitData) {
     updatedAt: new Date().toISOString(),
   };
   localStorage.setItem(STORAGE_KEYS.visits, JSON.stringify(visits));
+  // Sync to Supabase in background
+  _syncVisitToSupabase(schoolId, visits[schoolId]);
   return visits[schoolId];
 }
 
@@ -63,6 +66,8 @@ export function saveEssayNote(schoolId, questionId, text) {
   if (!all[schoolId]) all[schoolId] = {};
   all[schoolId][questionId] = text;
   localStorage.setItem(STORAGE_KEYS.essayNotes, JSON.stringify(all));
+  // Sync to Supabase in background
+  _syncEssayNoteToSupabase(schoolId, questionId, text);
 }
 
 // ============================================================
@@ -80,13 +85,14 @@ export function addCustomSchool(school) {
   const newSchool = { ...school, id, isCustom: true };
   schools.push(newSchool);
   localStorage.setItem(STORAGE_KEYS.customSchools, JSON.stringify(schools));
+  // Sync to Supabase
+  _syncCustomSchoolToSupabase(newSchool);
   return newSchool;
 }
 
 export function deleteCustomSchool(schoolId) {
   const schools = getCustomSchools().filter(s => s.id !== schoolId);
   localStorage.setItem(STORAGE_KEYS.customSchools, JSON.stringify(schools));
-  // Also clean up visit data and essay notes
   const visits = getVisits();
   delete visits[schoolId];
   localStorage.setItem(STORAGE_KEYS.visits, JSON.stringify(visits));
@@ -96,6 +102,8 @@ export function deleteCustomSchool(schoolId) {
     delete all[schoolId];
     localStorage.setItem(STORAGE_KEYS.essayNotes, JSON.stringify(all));
   }
+  // Sync deletes to Supabase
+  _deleteFromSupabase(schoolId);
 }
 
 // ============================================================
@@ -122,7 +130,7 @@ export function getRankings() {
 }
 
 // ============================================================
-// EXPORT (for Google Sheets later)
+// EXPORT
 // ============================================================
 
 export function exportAllData() {
@@ -138,4 +146,186 @@ export function importData(data) {
   if (data.visits) localStorage.setItem(STORAGE_KEYS.visits, JSON.stringify(data.visits));
   if (data.essayNotes) localStorage.setItem(STORAGE_KEYS.essayNotes, JSON.stringify(data.essayNotes));
   if (data.customSchools) localStorage.setItem(STORAGE_KEYS.customSchools, JSON.stringify(data.customSchools));
+}
+
+// ============================================================
+// SUPABASE SYNC (background, non-blocking)
+// ============================================================
+
+async function _syncVisitToSupabase(schoolId, visit) {
+  try {
+    await supabase.from('visits').upsert({
+      school_id: schoolId,
+      visited: visit.visited || false,
+      date_visited: visit.dateVisited || null,
+      tier: visit.tier || null,
+      scores: visit.scores || {},
+      score_notes: visit.scoreNotes || {},
+      low_interest_reason: visit.lowInterestReason || null,
+      low_interest_comment: visit.lowInterestComment || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'school_id' });
+  } catch (e) {
+    console.warn('Supabase sync failed (visits):', e);
+  }
+}
+
+async function _syncEssayNoteToSupabase(schoolId, questionId, text) {
+  try {
+    await supabase.from('essay_notes').upsert({
+      school_id: schoolId,
+      question_id: questionId,
+      note_text: text,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'school_id,question_id' });
+  } catch (e) {
+    console.warn('Supabase sync failed (essay):', e);
+  }
+}
+
+async function _syncCustomSchoolToSupabase(school) {
+  try {
+    await supabase.from('custom_schools').upsert({
+      id: school.id,
+      name: school.name,
+      location: school.location || null,
+      type: school.type || null,
+      setting: school.setting || null,
+      rank: school.rank ? parseInt(school.rank) : null,
+      acceptance_rate: school.acceptanceRate || null,
+      sat_range: school.satRange || null,
+      act_range: school.actRange || null,
+      undergrad_enrollment: school.undergradEnrollment ? parseInt(school.undergradEnrollment) : null,
+      total_enrollment: school.totalEnrollment ? parseInt(school.totalEnrollment) : null,
+      student_faculty_ratio: school.studentFacultyRatio || null,
+      grad_rate: school.gradRate || null,
+      greek_life: school.greekLife || null,
+      athletics: school.athletics || null,
+      tuition: school.tuition || null,
+      known_for: school.knownFor || null,
+      top_programs: school.topPrograms || null,
+      is_custom: true,
+    }, { onConflict: 'id' });
+  } catch (e) {
+    console.warn('Supabase sync failed (custom school):', e);
+  }
+}
+
+async function _deleteFromSupabase(schoolId) {
+  try {
+    await supabase.from('visits').delete().eq('school_id', schoolId);
+    await supabase.from('essay_notes').delete().eq('school_id', schoolId);
+    await supabase.from('custom_schools').delete().eq('id', schoolId);
+  } catch (e) {
+    console.warn('Supabase delete failed:', e);
+  }
+}
+
+// ============================================================
+// PULL FROM SUPABASE (call on app load to sync from cloud)
+// ============================================================
+
+export async function pullFromSupabase() {
+  try {
+    // Pull visits
+    const { data: visitRows } = await supabase.from('visits').select('*');
+    if (visitRows && visitRows.length > 0) {
+      const localVisits = getVisits();
+      for (const row of visitRows) {
+        const localVisit = localVisits[row.school_id];
+        const remoteTime = new Date(row.updated_at).getTime();
+        const localTime = localVisit?.updatedAt ? new Date(localVisit.updatedAt).getTime() : 0;
+        // Remote wins if newer
+        if (remoteTime > localTime) {
+          localVisits[row.school_id] = {
+            visited: row.visited,
+            dateVisited: row.date_visited,
+            tier: row.tier,
+            scores: row.scores || {},
+            scoreNotes: row.score_notes || {},
+            lowInterestReason: row.low_interest_reason,
+            lowInterestComment: row.low_interest_comment,
+            updatedAt: row.updated_at,
+          };
+        } else if (localTime > remoteTime) {
+          // Local is newer — push to Supabase
+          _syncVisitToSupabase(row.school_id, localVisits[row.school_id]);
+        }
+      }
+      // Also push any local visits not in remote
+      for (const [schoolId, visit] of Object.entries(localVisits)) {
+        if (!visitRows.find(r => r.school_id === schoolId)) {
+          _syncVisitToSupabase(schoolId, visit);
+        }
+      }
+      localStorage.setItem(STORAGE_KEYS.visits, JSON.stringify(localVisits));
+    } else {
+      // No remote data — push all local data up
+      const localVisits = getVisits();
+      for (const [schoolId, visit] of Object.entries(localVisits)) {
+        _syncVisitToSupabase(schoolId, visit);
+      }
+    }
+
+    // Pull essay notes
+    const { data: essayRows } = await supabase.from('essay_notes').select('*');
+    if (essayRows && essayRows.length > 0) {
+      const localEssays = JSON.parse(localStorage.getItem(STORAGE_KEYS.essayNotes) || '{}');
+      for (const row of essayRows) {
+        if (!localEssays[row.school_id]) localEssays[row.school_id] = {};
+        // Remote wins (simple merge — essay notes don't have individual timestamps)
+        if (row.note_text) {
+          localEssays[row.school_id][row.question_id] = row.note_text;
+        }
+      }
+      localStorage.setItem(STORAGE_KEYS.essayNotes, JSON.stringify(localEssays));
+    } else {
+      // Push local essays up
+      const localEssays = JSON.parse(localStorage.getItem(STORAGE_KEYS.essayNotes) || '{}');
+      for (const [schoolId, notes] of Object.entries(localEssays)) {
+        for (const [qId, text] of Object.entries(notes)) {
+          if (text) _syncEssayNoteToSupabase(schoolId, qId, text);
+        }
+      }
+    }
+
+    // Pull custom schools
+    const { data: customRows } = await supabase.from('custom_schools').select('*');
+    if (customRows && customRows.length > 0) {
+      const merged = customRows.map(row => ({
+        id: row.id,
+        name: row.name,
+        location: row.location,
+        type: row.type,
+        setting: row.setting,
+        rank: row.rank,
+        acceptanceRate: row.acceptance_rate,
+        satRange: row.sat_range,
+        actRange: row.act_range,
+        undergradEnrollment: row.undergrad_enrollment,
+        totalEnrollment: row.total_enrollment,
+        studentFacultyRatio: row.student_faculty_ratio,
+        gradRate: row.grad_rate,
+        greekLife: row.greek_life,
+        athletics: row.athletics,
+        tuition: row.tuition,
+        knownFor: row.known_for,
+        topPrograms: row.top_programs,
+        isCustom: true,
+      }));
+      localStorage.setItem(STORAGE_KEYS.customSchools, JSON.stringify(merged));
+    } else {
+      // Push local custom schools up
+      const localCustom = getCustomSchools();
+      for (const school of localCustom) {
+        _syncCustomSchoolToSupabase(school);
+      }
+    }
+
+    localStorage.setItem(STORAGE_KEYS.lastSync, new Date().toISOString());
+    return true;
+  } catch (e) {
+    console.warn('Supabase pull failed:', e);
+    return false;
+  }
 }

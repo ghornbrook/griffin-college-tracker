@@ -33,9 +33,18 @@ function SchoolLogo({ schoolId, size = 36, fallback = '—' }) {
 // APP
 // ============================================================
 export default function App() {
-  const [screen, setScreen] = useState('schools') // schools, detail, score, essay, rankings, addSchool
+  const [screen, setScreen] = useState('schools') // schools, detail, score, essay, rankings, matrix, addSchool
   const [selectedSchool, setSelectedSchool] = useState(null)
   const [toast, setToast] = useState(null)
+  const [synced, setSynced] = useState(false)
+
+  // Sync from Supabase on first load
+  useEffect(() => {
+    store.pullFromSupabase().then((ok) => {
+      setSynced(true)
+      if (ok) console.log('Synced from Supabase')
+    })
+  }, [])
 
   const showToast = (msg) => {
     setToast(msg)
