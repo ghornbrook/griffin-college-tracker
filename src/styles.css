@@ -616,6 +616,129 @@ body {
   border: 1px solid var(--gray-200);
 }
 
+/* Matrix / 2x2 Chart */
+.matrix-container {
+  padding: 16px 8px 8px 0;
+  margin: 8px 12px;
+}
+.matrix-y-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-align: center;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.matrix-chart {
+  display: flex;
+  height: 320px;
+}
+.matrix-y-axis {
+  width: 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-right: 6px;
+  flex-shrink: 0;
+}
+.matrix-y-tick {
+  font-size: 10px;
+  color: var(--gray-400);
+  line-height: 1;
+}
+.matrix-plot {
+  flex: 1;
+  position: relative;
+  border-left: 2px solid var(--gray-300);
+  border-bottom: 2px solid var(--gray-300);
+  background: var(--gray-50);
+  border-radius: 0 0 var(--radius-sm) 0;
+  overflow: visible;
+}
+.matrix-gridlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.matrix-vline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--gray-200);
+}
+.matrix-hline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--gray-200);
+}
+.matrix-dot {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  z-index: 1;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.matrix-dot:hover, .matrix-dot.hovered {
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.matrix-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gray-800);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  z-index: 20;
+}
+.matrix-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--gray-800);
+}
+.matrix-tooltip strong {
+  font-size: 12px;
+}
+.matrix-tooltip span {
+  font-size: 10px;
+  color: var(--gray-400);
+}
+.matrix-x-axis {
+  display: flex;
+  margin-left: 32px;
+  margin-top: 6px;
+}
+.matrix-x-label {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+
 /* Notification toast */
 .toast {
   position: fixed;

@@ -55,6 +55,7 @@ export default function App() {
       {screen === 'score' && <ScoreScreen school={selectedSchool} nav={nav} showToast={showToast} />}
       {screen === 'essay' && <EssayScreen school={selectedSchool} nav={nav} showToast={showToast} />}
       {screen === 'rankings' && <RankingsScreen nav={nav} />}
+      {screen === 'matrix' && <MatrixScreen nav={nav} />}
       {screen === 'addSchool' && <AddSchoolScreen nav={nav} showToast={showToast} />}
 
       <nav className="bottom-nav">
@@ -63,6 +64,9 @@ export default function App() {
         </button>
         <button className={`nav-item ${screen === 'rankings' ? 'active' : ''}`} onClick={() => nav('rankings')}>
           <span className="nav-icon">🏆</span>Rankings
+        </button>
+        <button className={`nav-item ${screen === 'matrix' ? 'active' : ''}`} onClick={() => nav('matrix')}>
+          <span className="nav-icon">📊</span>Matrix
         </button>
       </nav>
 
@@ -671,6 +675,116 @@ function RankingsScreen({ nav }) {
           </div>
         )
       })}
+    </>
+  )
+}
+
+// ============================================================
+// MATRIX SCREEN (2x2: Tier vs Score)
+// ============================================================
+function MatrixScreen({ nav }) {
+  const [hoveredSchool, setHoveredSchool] = useState(null)
+  const visits = store.getVisits()
+  const allSchools = getAllSchools()
+
+  // Only show schools that have both a tier and scores
+  const plotted = allSchools.map(school => {
+    const visit = visits[school.id]
+    if (!visit?.tier || !visit?.scores) return null
+    const total = Object.values(visit.scores).reduce((sum, s) => sum + (s || 0), 0)
+    return { school, tier: visit.tier, score: total }
+  }).filter(Boolean)
+
+  // Tier positions on X axis (0-3 mapped to percentage)
+  const TIER_X = { reach: 0, target: 1, safety: 2, low_interest: 3 }
+  const TIER_COLS = ['Reach', 'Target', 'Safety', 'Low Interest']
+
+  // Score range for Y axis
+  const maxScore = 130
+  const minScore = 0
+
+  return (
+    <>
+      <div className="header">
+        <h1>School Matrix</h1>
+        <div className="subtitle">{plotted.length} school{plotted.length !== 1 ? 's' : ''} plotted</div>
+      </div>
+
+      {plotted.length === 0 ? (
+        <div className="empty-state">
+          <div className="icon">📊</div>
+          <h3>No data yet</h3>
+          <p>Score schools and set their tier (Reach/Target/Safety) to see them plotted here.</p>
+          <button className="btn btn-primary btn-sm" onClick={() => nav('schools')}>Browse Schools</button>
+        </div>
+      ) : (
+        <div className="matrix-container">
+          {/* Y-axis label */}
+          <div className="matrix-y-label">Visit Score</div>
+
+          <div className="matrix-chart">
+            {/* Y-axis ticks */}
+            <div className="matrix-y-axis">
+              {[130, 100, 70, 40, 10].map(v => (
+                <span key={v} className="matrix-y-tick">{v}</span>
+              ))}
+            </div>
+
+            {/* Plot area */}
+            <div className="matrix-plot">
+              {/* Grid lines */}
+              <div className="matrix-gridlines">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="matrix-vline" style={{ left: `${((i + 1) / 4) * 100}%` }} />
+                ))}
+                {[0.25, 0.5, 0.75].map(f => (
+                  <div key={f} className="matrix-hline" style={{ bottom: `${f * 100}%` }} />
+                ))}
+              </div>
+
+              {/* Dots */}
+              {plotted.map(({ school, tier, score }) => {
+                const branding = getBranding(school.id)
+                const col = TIER_X[tier]
+                // Center within the column with small random offset to avoid overlap
+                const xPct = ((col + 0.5) / 4) * 100
+                const yPct = ((score - minScore) / (maxScore - minScore)) * 100
+                const isHovered = hoveredSchool === school.id
+                return (
+                  <div
+                    key={school.id}
+                    className={`matrix-dot ${isHovered ? 'hovered' : ''}`}
+                    style={{
+                      left: `${xPct}%`,
+                      bottom: `${yPct}%`,
+                      background: branding.color,
+                      transform: `translate(-50%, 50%) ${isHovered ? 'scale(1.4)' : ''}`,
+                    }}
+                    onMouseEnter={() => setHoveredSchool(school.id)}
+                    onMouseLeave={() => setHoveredSchool(null)}
+                    onTouchStart={() => setHoveredSchool(isHovered ? null : school.id)}
+                    onClick={() => nav('detail', school)}
+                  >
+                    {isHovered && (
+                      <div className="matrix-tooltip">
+                        <strong>{school.name}</strong>
+                        <span>{score}/130</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* X-axis labels */}
+          <div className="matrix-x-axis">
+            {TIER_COLS.map(label => (
+              <span key={label} className="matrix-x-label">{label}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   )
 }
