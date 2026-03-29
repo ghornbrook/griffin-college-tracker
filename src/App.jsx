@@ -452,7 +452,7 @@ function ScoreScreen({ school, nav, showToast }) {
         <div className="header-back">
           <button className="back-btn" onClick={handleBack}>← Back</button>
         </div>
-        <h1>Score: {school.name}</h1>
+        <h1>Score: <span className="header-link" onClick={() => nav('detail', school)}>{school.name}</span></h1>
       </div>
 
       <div className="progress-bar">
@@ -584,7 +584,7 @@ function EssayScreen({ school, nav, showToast }) {
         <div className="header-back">
           <button className="back-btn" onClick={() => { showToast('Notes saved!'); nav('detail', school) }}>← Save & Exit</button>
         </div>
-        <h1>Essay Notes: {school.name}</h1>
+        <h1>Essay Notes: <span className="header-link" onClick={() => { showToast('Notes saved!'); nav('detail', school) }}>{school.name}</span></h1>
       </div>
 
       <div className="progress-bar">
