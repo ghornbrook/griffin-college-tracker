@@ -473,8 +473,8 @@ function ScoreScreen({ school, nav, showToast }) {
   }
 
   const handleBack = () => {
-    if (step > 0) setStep(step - 1)
-    else nav('detail', school)
+    showToast('Scores saved!')
+    nav('detail', school)
   }
 
   const currentScore = scores[criterion.id] || 5

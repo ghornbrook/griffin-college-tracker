@@ -47,7 +47,7 @@ export const SCORING_CRITERIA = [
     id: 'athletics',
     title: 'Athletics & Spirit',
     description: 'Division level? Baseball program? Game day culture? School spirit?',
-    icon: '⚾',
+    icon: '🏈',
     selfGuided: true,
   },
   {
