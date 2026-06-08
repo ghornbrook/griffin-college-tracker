@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { SCORING_CRITERIA, ESSAY_SECTIONS, ALL_ESSAY_QUESTIONS, getCriteriaForTourType } from './data/questions'
 import * as store from './data/store'
 import { SCHOOLS, getSchoolById, getAllSchools } from './data/schools'
 import { getBranding, getLogoUrl } from './data/branding'
+import { searchCollegeScorecard } from './data/collegeScorecard'
 
 const TIER_LABELS = { reach: 'Reach', target: 'Target', safety: 'Safety', low_interest: 'Low Interest' }
 
@@ -1291,12 +1292,63 @@ function AddSchoolScreen({ nav, showToast }) {
     gradRate: '', greekLife: '', athletics: '', tuition: '',
     knownFor: '', topPrograms: '',
   })
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [autoFilled, setAutoFilled] = useState(false)
+  const searchTimeout = useRef(null)
+
+  useEffect(() => () => { if (searchTimeout.current) clearTimeout(searchTimeout.current) }, [])
 
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }))
 
+  const handleSearchInput = (value) => {
+    setSearchQuery(value)
+    setSearchResults([])
+    setAutoFilled(false)
+    if (searchTimeout.current) clearTimeout(searchTimeout.current)
+    if (value.length < 2) { setSearching(false); return }
+    setSearching(true)
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const results = await searchCollegeScorecard(value)
+        setSearchResults(results)
+      } catch {
+        showToast('Search failed — fill in manually')
+      } finally {
+        setSearching(false)
+      }
+    }, 400)
+  }
+
+  const handleSelectSchool = (school) => {
+    setForm({
+      name: school.name || '',
+      location: school.location || '',
+      type: school.type || 'Private Research',
+      setting: school.setting || 'Suburban',
+      rank: school.rank || '',
+      acceptanceRate: school.acceptanceRate || '',
+      satRange: school.satRange || '',
+      actRange: school.actRange || '',
+      undergradEnrollment: school.undergradEnrollment ? String(school.undergradEnrollment) : '',
+      totalEnrollment: school.totalEnrollment ? String(school.totalEnrollment) : '',
+      studentFacultyRatio: school.studentFacultyRatio || '',
+      gradRate: school.gradRate || '',
+      greekLife: school.greekLife || '',
+      athletics: school.athletics || '',
+      tuition: school.tuition || '',
+      knownFor: school.knownFor || '',
+      topPrograms: school.topPrograms || '',
+    })
+    setSearchQuery('')
+    setSearchResults([])
+    setAutoFilled(true)
+  }
+
   const handleSubmit = () => {
     if (!form.name.trim()) { showToast('School name is required'); return }
-    const school = store.addCustomSchool({
+    store.addCustomSchool({
       ...form,
       undergradEnrollment: form.undergradEnrollment ? parseInt(form.undergradEnrollment) : null,
       totalEnrollment: form.totalEnrollment ? parseInt(form.totalEnrollment) : null,
@@ -1315,14 +1367,65 @@ function AddSchoolScreen({ nav, showToast }) {
         <h1>Add School</h1>
       </div>
 
+      <div style={{ padding: '0 16px 4px', position: 'relative' }}>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label className="form-label">Search to Auto-Fill</label>
+          <input
+            className="form-input"
+            placeholder="Start typing a school name..."
+            value={searchQuery}
+            onChange={e => handleSearchInput(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        {searching && (
+          <div style={{ padding: '8px 4px', color: '#6b7280', fontSize: 13 }}>Searching...</div>
+        )}
+        {searchResults.length > 0 && (
+          <div style={{
+            position: 'absolute', zIndex: 100, left: 16, right: 16,
+            background: 'white', border: '1px solid #e5e7eb', borderRadius: 8,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden', marginTop: 4,
+          }}>
+            {searchResults.map(r => (
+              <button
+                key={r.id}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '10px 14px', background: 'none', border: 'none',
+                  borderBottom: '1px solid #f3f4f6', cursor: 'pointer',
+                }}
+                onMouseOver={e => e.currentTarget.style.background = '#f9fafb'}
+                onMouseOut={e => e.currentTarget.style.background = 'none'}
+                onClick={() => handleSelectSchool(r)}
+              >
+                <div style={{ fontWeight: 500, fontSize: 14 }}>{r.displayName}</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>{r.displayLocation}</div>
+              </button>
+            ))}
+          </div>
+        )}
+        {autoFilled && (
+          <div style={{
+            marginTop: 8, padding: '8px 12px', background: '#ecfdf5',
+            borderRadius: 6, fontSize: 13, color: '#065f46',
+          }}>
+            Data auto-filled — review and edit below before saving
+          </div>
+        )}
+      </div>
+
       {[
         { field: 'name', label: 'School Name *', placeholder: 'e.g., University of Michigan' },
         { field: 'location', label: 'Location', placeholder: 'e.g., Ann Arbor, MI' },
         { field: 'acceptanceRate', label: 'Acceptance Rate', placeholder: 'e.g., 18%' },
         { field: 'satRange', label: 'SAT Mid-50%', placeholder: 'e.g., 1380-1520' },
+        { field: 'actRange', label: 'ACT Mid-50%', placeholder: 'e.g., 28-33' },
         { field: 'rank', label: 'US News Rank', placeholder: 'e.g., 25' },
         { field: 'undergradEnrollment', label: 'UG Enrollment', placeholder: 'e.g., 32000' },
-        { field: 'tuition', label: 'Total Cost', placeholder: 'e.g., $75,000' },
+        { field: 'studentFacultyRatio', label: 'Student:Faculty Ratio', placeholder: 'e.g., 16:1' },
+        { field: 'tuition', label: 'Total Cost (Out-of-State)', placeholder: 'e.g., $75,000' },
+        { field: 'gradRate', label: 'Graduation Rate', placeholder: 'e.g., 87%' },
         { field: 'topPrograms', label: 'Top Programs', placeholder: 'e.g., Engineering, Business, CS' },
         { field: 'knownFor', label: 'Known For', placeholder: 'Brief description...' },
       ].map(({ field, label, placeholder }) => (
